@@ -23,9 +23,9 @@
 ## 4.专用词汇
 
 1. 图像数据包：摄像机采集到的图像数据，每个图像数据包都有一个时间戳，时间戳的单位是服务器的NTP时间戳。
-   简称：img_data，图像数据， 数据包。
+   简称：图像数据， 数据包，img_data_t，img_data。
 2. 图像数据包拆分包：将图像数据包拆分为多个数据包，每个数据包的大小为1400字节，每个数据包都有一个序号，序号从0开始，每个数据包的序号是连续的。
-   简称：数据拆分包， 拆分包， img_segment_data_t， img_segment_data。
+   简称：数据拆分包， 拆分包， img_data_t，img_data，。
 3. 图像数据包队列：用于存储图像数据包的队列，队列的长度为10，队列的长度可以根据实际情况进行调整。
    简称：图像数据队列， 数据队列。
 4. 图像数据包拆分包队列：用于存储图像数据包拆分包的队列，队列的长度为10，队列的长度可以根据实际情况进行调整。
@@ -107,10 +107,8 @@ const int32_t fps = 60;
 
 `备注`：
 
-```text
-    端上具体一张MJPEG图像数据延时时间计算：第3步发送MJPEG图像数据拆分包的时间戳完毕时间点 - 第1步摄像机采集到MJPEG图像数据的时间戳。
-    进而可以计算出端上的MJPEG图像数据延时时间的最大值，最小值，平均值 和 某一段时间内的MJPEG图像数据延时时间的最大值，最小值，平均值。
-```
+1. 端上具体一张MJPEG图像数据延时时间计算：第3步发送MJPEG图像数据拆分包的时间戳完毕时间点 - 第1步摄像机采集到MJPEG图像数据的时间戳。
+   进而可以计算出端上的MJPEG图像数据延时时间的最大值，最小值，平均值 和 某一段时间内的MJPEG图像数据延时时间的最大值，最小值，平均值。
 
 ### 5.2 接收策略-上位机
 
@@ -253,7 +251,7 @@ static std::map<long, uint64_t> render_diff_time;
 
 ### 5.3 接收数据包处理流程
 
-   `流程图`：
+`流程图`：
 
    ```mermaid
     graph LR
@@ -272,7 +270,7 @@ static std::map<long, uint64_t> render_diff_time;
 
 ### 5.4 拆分包组装流程
 
-   `流程图`：
+`流程图`：
 
    ```mermaid
     graph LR
@@ -301,21 +299,22 @@ static std::map<long, uint64_t> render_diff_time;
 
 ### 5.6 更新img_recv_t对象引用
 
-   `流程图`：
+`流程图`：
 
    ```mermaid
     graph LR
     subgraph 拆分包组装
         direction TB
-        a[更新img_recv_t对象的id，timestamp，fd] --> b[更新img_recv_t对象的segment_list] --> c[更新img_recv_t对象的end_segment_id] --> d[更新img_recv_t对象的recv_finish]
+        a["更新img_recv_t对象的id，timestamp，fd"] --> b["更新img_recv_t对象的segment_list"] --> c["更新img_recv_t对象的end_segment_id"] --> d["更新img_recv_t对象的recv_finish"]
     end
    ```
 
 `说明`：
-    更新img_recv_t对象的id，timestamp，fd: 将img_data_t::id，img_data_t::timestamp，img_data_t::fd，追加到img_recv_t对象中。
-    更新img_recv_t对象的segment_list： 将img_data_t::segment_id，img_data_t::data_len，img_data_t::data，追加到img_recv_t::segment_list中。
-    更新img_recv_t对象的end_segment_id： 如果img_data_t::end = 1，那么将img_data_t::segment_id，付值给img_recv_t::end_segment_id。
-    更新img_recv_t对象的recv_finish： 如果img_recv_t::end_segment_id = 1，且 img_recv_t::segment_list.size() == img_recv_t::end_segment_id + 1，那么将img_recv_t::recv_finish = 1。
+
+ 1. 更新img_recv_t对象的id，timestamp，fd: 将img_data_t::id，img_data_t::timestamp，img_data_t::fd，追加到img_recv_t对象中。
+ 2. 更新img_recv_t对象的segment_list： 将img_data_t::segment_id，img_data_t::data_len，img_data_t::data，追加到img_recv_t::segment_list中。
+ 3. 更新img_recv_t对象的end_segment_id： 如果img_data_t::end = 1，那么将img_data_t::segment_id，付值给img_recv_t::end_segment_id。
+ 4. 更新img_recv_t对象的recv_finish： 如果img_recv_t::end_segment_id = 1，且 img_recv_t::segment_list.size() == img_recv_t::end_segment_id + 1，那么将img_recv_t::recv_finish = 1。
 
 ### 5.7 渲染数据流程
 
@@ -341,31 +340,30 @@ static std::map<long, uint64_t> render_diff_time;
    满足条件：接收端在2路渲染队列都存在img_recv_list_map[fd].size() > 0 && LinkList<img_recv_t> 某一图像数据接收完成img_recv_t.recv_finish==1。
    各自计算出2路数据包的接收端系统端与采集时间戳的时间戳差值，然后更新接收端 render_diff_time。
    用于后续计算每一个渲染队列LinkList<img_recv_t>的数据包中选择的可用于拼接渲染的节点数据。
-   存在的问题
-
-    ```text
-        linklist<img_recv_t>中的数据包的时间戳和采集端的时间戳的时间差值，可能会出现负值，这个时候需要考虑这个问题。
-        在发送端NTP时间完全一致的情况下，选取的2通道的img_recv_t的数据包的时间戳差值绝对值过大。由于网络抖动原因，设备第一次启动，可能会出现这个问题。考虑系统首次前几次拼接的图片不做显示渲染。
-    ```
+   存在的问题：
+    * linklist<img_recv_t>中的数据包的时间戳和采集端的时间戳的时间差值，可能会出现负值，这个时候需要考虑这个问题。
+    * 在发送端NTP时间完全一致的情况下，选取的2通道的img_recv_t的数据包的时间戳差值绝对值过大。
+      由于网络抖动原因，设备第一次启动，可能会出现这个问题。考虑系统首次前几次拼接的图片不做显示渲染。
 
 2. 拼接数据包处理:
    根据2路渲染队列LinkList<img_recv_t>的数据包中选择的可用于拼接渲染的节点数据，进行拼接处理。
 
 3. 更新接收数据包队列:
-   更新接收数据包队列，将已经拼接完成的数据包和以前的数据从接收数据包队列中删除。
+   更新接收数据包队列，将已经拼接完成的数据包和以前的数据从接收数据包队列中删除, 更新render_sync_baseline[fd].id，render_sync_baseline[fd].timestamp。
 
-## 总结:
+### 总结
 
-  考虑到实时性，接收端无状态反馈机制。
-  网络抖动，丢包，错包，超时等情况直接丢弃数据包。 容错性不高。
-  只处理了基础链路层的容错处理，没有处理应用层的容错处理，比如图像数据包的id重复，时间戳重复，时间戳小于基准时间戳，时间戳大于基准时间戳，时间戳差值过大等情况。
-  接收端设置10个图片数据接收缓冲区。用于UDP传输的数据包排序，组装，拼接，渲染。同步性不高。有效真实数据包的丢失率较高。
-  设计完全依赖基础链路层的质量。
+1. 考虑到实时性，接收端无状态反馈机制。
+2. 网络抖动，丢包，错包，超时等情况直接丢弃数据包。 容错性不高。
+3. 只处理了基础链路层的容错处理，没有处理应用层的容错处理，比如图像数据包的id重复，时间戳重复，时间戳小于基准时间戳，时间戳大于基准时间戳，时间戳差值过大等情况。
+4. 接收端设置10个图片数据接收缓冲区。用于UDP传输的数据包排序，组装，拼接，渲染。同步性不高。有效真实数据包的丢失率较高。
+5. 设计完全依赖基础链路层的质量。
 
-  迭代优化方向：
-    · 兼顾实时性基础上，借鉴kcp的基础上，加入反馈机制，优化接收端的容错性。
-    · 优化接收端的同步性。
-    · 优化接收端的实时性。
+### 迭代优化方向
+
+1. 兼顾实时性基础上，借鉴复用[KCP协议](https://github.com/skywind3000/kcp)的基础上和加入反馈机制，优化接收端的容错性。
+2. 优化接收端的同步性。
+3. 优化接收端的实时性。
 
 ### 参考资料
 
